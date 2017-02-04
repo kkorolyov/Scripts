@@ -58,8 +58,7 @@ if installConfirm "MySQL"; then
 	yum -y install mysql-community-server > /dev/null
 	systemctl start mysqld.service
 
-	tempPass="$(grep 'temporary password' /var/log/mysqld.log)"
-	echo "$me $tempPass"
+	echo "$(grep 'temporary password' /var/log/mysqld.log)" >> ~/mysqlTempPass
 
 	echo "$me Installed MySQL"; echo
 fi
