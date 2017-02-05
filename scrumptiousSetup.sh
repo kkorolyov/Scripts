@@ -58,7 +58,10 @@ if installConfirm "MySQL"; then
 	yum -y install mysql-community-server > /dev/null
 	systemctl start mysqld.service
 
-	echo "$(grep 'temporary password' /var/log/mysqld.log)" >> ~/mysqlTempPass
+	mysqlTempPass="$(grep 'temporary password' /var/log/mysqld.log | sed 's/^.*\s//')"
+	echo -n "MySQL root password: "
+	read mysqlPass
+	mysql -uroot -p"$mysqlTempPass" -e"ALTER USER 'root'@'localhost' IDENTIFIED BY '${mysqlPass}'"
 
 	echo "$me Installed MySQL"; echo
 fi
@@ -96,7 +99,15 @@ fi
 if installConfirm "NGINX"; then
 	echo "$me Installing NGINX..."
 	
-	echo "$me NO SUCH OPTION YET"
+	cat << 'EOT' > /etc/yum.repos.d/nginx.repo
+[nginx]
+name=nginx repo
+baseurl=http://nginx.org/packages/centos/$releasever/$basearch/
+gpgcheck=0
+enabled=1
+EOT
+	
+	yum -y install nginx > /dev/null
 	
 	echo "$me Installed NGINX"; echo
 fi
