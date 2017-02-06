@@ -56,7 +56,8 @@ if installConfirm "MySQL"; then
 	wget -o /dev/null -O "$mysqlRPM" https://dev.mysql.com/get/mysql57-community-release-el7-9.noarch.rpm
 	rpm -U "$mysqlRPM"
 	yum -y install mysql-community-server > /dev/null
-	systemctl start mysqld.service
+	systemctl enable mysqld
+	systemctl start mysqld
 
 	mysqlTempPass="$(grep 'temporary password' /var/log/mysqld.log | sed 's/^.*\s//')"
 	echo -n "MySQL root password: "
@@ -72,8 +73,8 @@ if installConfirm "PostgreSQL"; then
 	
 	yum -y install postgresql-server > /dev/null
 	postgresql-setup initdb
-	systemctl enable postgresql.service
-	systemctl start postgresql.service
+	systemctl enable postgresql
+	systemctl start postgresql
 	
 	echo "$me Installed PostgreSQL"; echo
 fi
@@ -83,15 +84,40 @@ if installConfirm "Tomcat"; then
 	echo "$me Installing Tomcat..."
 	
 	yum -y install java-1.8.0-openjdk-devel > /dev/null
-	echo "export JAVA_HOME=$(readlink -f /usr/bin/java | sed "s:/jre/bin/java::")" >> ~/.bashrc
 
 	tomcatTar="/tmp/tomcat.tar.gz"
 	wget -o /dev/null -O "$tomcatTar" http://apache.mirrors.ionfish.org/tomcat/tomcat-9/v9.0.0.M17/bin/apache-tomcat-9.0.0.M17.tar.gz
 	tar -xzf "$tomcatTar" -C /opt
-	tomcatDir="/opt/$(tar -tzf $tomcatTar | head -1 | sed -e 's@/.*@@')"
+	tomcatDir="/opt/$(tar -tzf $tomcatTar | head -1 | sed -e 's:/.*::')"
 	
-	echo "export CATALINA_HOME=$tomcatDir" >> ~/.bashrc
+	useradd -d "$tomcatDir" -s /sbin/nologin -M tomcat
+	chown -R tomcat:tomcat "$tomcatDir"
 	
+	cat << EOT > /usr/lib/systemd/system/tomcat.service
+# Systemd service file for tomcat
+[Unit]
+Description=Apache Tomcat Web Application Server
+After=syslog.target network.target
+
+[Service]
+Type=forking
+
+User=tomcat
+Group=tomcat
+
+Environment=JAVA_HOME=$(readlink -f /usr/bin/java | sed "s:/jre/bin/java::")
+Environment=CATALINA_HOME=$tomcatDir
+
+ExecStart=$tomcatDir/bin/startup.sh
+ExecStop=$tomcatDir/bin/shutdown.sh
+
+[Install]
+WantedBy=multi-user.target
+EOT
+	systemctl daemon-reload
+	systemctl enable tomcat
+	systemctl start tomcat
+
 	echo "$me Installed Tomcat"; echo
 fi
 
