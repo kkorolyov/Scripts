@@ -13,6 +13,18 @@ function installConfirm {
 	[ "$confirm" == "Y" -o "$confirm" == "y" ]
 }
 
+function selfSign {
+	keyDir="/etc/ssl/private"
+	certDir="/etc/ssl/certs"
+	mkdir -p "$keyDir"
+	mkdir -p "$certDir"
+
+	key="${keyDir}/${1}-self.key"
+	cert="${certDir}/${1}-self.crt"
+
+	openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout "$key" -out "$cert"
+}
+
 # Update system
 echo "$me Updating system..."
 yum -y update > /dev/null
@@ -30,6 +42,7 @@ tools=(
 	"dkms"
 	"net-tools"
 	"vim"
+	"git"
 )
 for tool in "${tools[@]}"; do
 	yum -y install "$tool" > /dev/null
@@ -93,6 +106,20 @@ if installConfirm "Tomcat"; then
 	useradd -d "$tomcatDir" -s /sbin/nologin -M tomcat
 	chown -R tomcat:tomcat "$tomcatDir"
 	
+	keystoreDir="${tomcatDir}/conf/.keystore"
+	keytool -genkey -alias tomcat -keyalg RSA -keystore "$keystoreDir"
+	cat << EOT > "${tomcatDir}/howToSSL.txt"
+<!-- Add the following snippet to ${tomcatDir}/conf/server.xml -->
+<Connector port="8443" protocol="org.apache.coyote.http11.Http11NioProtocol"
+		maxThreads="150" SSLEnabled="true">
+	<SSLHostConfig>
+		<Certificate certificateKeystoreFile="${keystoreDir}"
+				certificateKeystorePassword="<SET_ME>"
+				type="RSA" />
+	</SSLHostConfig>
+</Connector>
+EOT
+	
 	cat << EOT > /usr/lib/systemd/system/tomcat.service
 # Systemd service file for tomcat
 [Unit]
@@ -134,6 +161,24 @@ enabled=1
 EOT
 	
 	yum -y install nginx > /dev/null
+	
+	selfSign "nginx"
+	cat << EOT > /etc/nginx/howToSSL.txt
+# Add the following snippet to an nginx .conf
+server {
+	listen 80 default_server;
+	listen [::]:80 default_server;
+	server_name _;
+
+	return 301 https://$host$request_uri;
+}
+server {
+	listen 443 ssl;
+	server_name <NAME>;
+
+	ssl_certificate /etc/ssl/certs/nginx-self.crt;
+	ssl_certificate_key /etc/ssl/private/nginx-self.key;
+EOT
 	
 	echo "$me Installed NGINX"; echo
 fi
